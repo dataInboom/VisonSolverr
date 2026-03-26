@@ -1,4 +1,5 @@
 import logging
+import os
 import platform
 import sys
 import time
@@ -141,6 +142,8 @@ def _controller_v1_handler(req: V1RequestBase) -> V1ResponseBase:
         res = _cmd_request_get(req)
     elif req.cmd == 'request.post':
         res = _cmd_request_post(req)
+    elif req.cmd == 'request.vision':
+        res = _cmd_request_vision(req)
     else:
         raise Exception(f"Request parameter 'cmd' = '{req.cmd}' is invalid.")
 
@@ -181,6 +184,70 @@ def _cmd_request_post(req: V1RequestBase) -> V1ResponseBase:
     res.message = challenge_res.message
     res.solution = challenge_res.result
     return res
+
+
+def _cmd_request_vision(req: V1RequestBase) -> V1ResponseBase:
+    # do some validations
+    if req.url is None:
+        raise Exception("Request parameter 'url' is mandatory in 'request.vision' command.")
+    if req.postData is not None:
+        raise Exception("Cannot use 'postBody' when sending a VISION request.")
+    if req.returnRawHtml is not None:
+        logging.warning("Request parameter 'returnRawHtml' was removed in FlareSolverr v2.")
+    if req.download is not None:
+        logging.warning("Request parameter 'download' was removed in FlareSolverr v2.")
+
+    # Read Nitrogen.js file
+    nitrogen_js_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Nitrogen.js')
+    with open(nitrogen_js_path, 'r', encoding='utf-8') as f:
+        nitrogen_js_code = f.read()
+
+    timeout = int(req.maxTimeout) / 1000
+    driver = None
+    try:
+        if req.session:
+            session_id = req.session
+            ttl = timedelta(minutes=req.session_ttl_minutes) if req.session_ttl_minutes else None
+            session, fresh = SESSIONS_STORAGE.get(session_id, ttl)
+
+            if fresh:
+                logging.debug(f"new session created to perform the request (session_id={session_id})")
+            else:
+                logging.debug(f"existing session is used to perform the request (session_id={session_id}, "
+                              f"lifetime={str(session.lifetime())}, ttl={str(ttl)})")
+
+            driver = session.driver
+        else:
+            driver = utils.get_webdriver(req.proxy)
+            logging.debug('New instance of webdriver has been created to perform the request')
+
+        # Resolve the challenge
+        challenge_res = func_timeout(timeout, _evil_logic, (req, driver, 'VISION'))
+
+        # Execute Nitrogen.js after challenge is solved (only for request.vision)
+        logging.debug("Executing Nitrogen.js to extract vision data...")
+        vision_data = driver.execute_script(nitrogen_js_code)
+        logging.debug(f"Vision data extracted, found {len(vision_data) if vision_data else 0} elements")
+
+        # Add vision data to the solution
+        if vision_data is not None:
+            challenge_res.result.vision = vision_data
+
+        res = V1ResponseBase({})
+        res.status = challenge_res.status
+        res.message = challenge_res.message
+        res.solution = challenge_res.result
+        return res
+    except FunctionTimedOut:
+        raise Exception(f'Error solving the challenge. Timeout after {timeout} seconds.')
+    except Exception as e:
+        raise Exception('Error solving the challenge. ' + str(e).replace('\n', '\\n'))
+    finally:
+        if not req.session and driver is not None:
+            if utils.PLATFORM_VERSION == "nt":
+                driver.close()
+            driver.quit()
+            logging.debug('A used instance of webdriver has been destroyed')
 
 
 def _cmd_sessions_create(req: V1RequestBase) -> V1ResponseBase:
