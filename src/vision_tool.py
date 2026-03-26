@@ -31,11 +31,12 @@ class FlaresolverUtil:
             return None
 
 
-def vision_tool(url):
+def vision_tool(url, output_file="vision_result.json"):
     """
     视觉工具主函数
     """
     vision = FlaresolverUtil.VisionHtml(url)
+    result_list = []
 
     if vision is not None:
         status = vision.get("status")
@@ -63,14 +64,21 @@ def vision_tool(url):
                             # 获取子节点数量
                             nodesize = len(elements[0])
 
-                            if nodesize == 1 or nodesize == 0:
+                            if  nodesize == 0:
                                 # 获取文本内容
                                 text = elements[0].text_content()
                                 text = str(text) if text is not None else ""
                                 # 判断文本长度和节点类型
-                                if len(text) > 6 and node_name != "A":
+                                # Check text length and node type
+                                # テキストの長さとノードタイプを判定する
+                                if len(text) > 6 and node_name != "A" and node_name!="SCRIPT" and node_name!="STYLE":
                                     node["text"] = text
-                                    print(json.dumps(node, ensure_ascii=False, indent=2))
+                                    result_list.append(node)
+
+    # 保存结果到本地 JSON 文件
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(result_list, f, ensure_ascii=False, indent=2)
+    print(f"结果已保存到 {output_file}，共 {len(result_list)} 条记录")
             
 
 
