@@ -40,38 +40,38 @@ def vision_tool(url):
     if vision is not None:
         status = vision.get("status")
 
-        if status == 200:
-            response = vision.get("response")
-            url = vision.get("url")
+        if status == "ok":
+            solution=vision.get("solution")
+            response = solution.get("response")
+            if solution:
+                url = solution.get("url")
+                # 使用 lxml 解析 HTML
+                doc = html.fromstring(response)
+                info = solution.get("vision")
+                if info:
+                    for key in info.keys():
+                        node = info[key]
+                        node_name = node.get("nodeName")
+                        
+                        # 获取完整 XPath 并转为小写
+                        fullxpath = node.get("fullxpath").lower()
 
-            # 使用 lxml 解析 HTML
-            doc = html.fromstring(response)
-            info = vision.get("vision")
+                        # 使用 XPath 查找元素
+                        elements = doc.xpath(fullxpath)
 
-            if info:
-                for key in info.keys():
-                    node = info[key]
-                    node_name = node.get("nodeName")
+                        if len(elements) > 0:
+                            # 获取子节点数量
+                            nodesize = len(elements[0])
 
-                    # 获取完整 XPath 并转为小写
-                    fullxpath = node.get("fullxpath").lower()
-
-                    # 使用 XPath 查找元素
-                    elements = doc.xpath(fullxpath)
-
-                    if len(elements) > 0:
-                        # 获取子节点数量
-                        nodesize = len(elements[0])
-
-                        if nodesize == 1 or nodesize == 0:
-                            # 获取文本内容
-                            text = elements[0].text_content()
-                            text = str(text) if text is not None else ""
-
-                            # 判断文本长度和节点类型
-                            if len(text) > 6 and node_name != "A":
-                                node["text"] = text
-                                print(json.dumps(node, ensure_ascii=False, indent=2))
+                            if nodesize == 1 or nodesize == 0:
+                                # 获取文本内容
+                                text = elements[0].text_content()
+                                text = str(text) if text is not None else ""
+                                # 判断文本长度和节点类型
+                                if len(text) > 6 and node_name != "A":
+                                    node["text"] = text
+                                    print(json.dumps(node, ensure_ascii=False, indent=2))
+            
 
 
 if __name__ == "__main__":
